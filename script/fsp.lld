@@ -1,0 +1,102 @@
+/*
+                  Linker File for Renesas FSP
+*/
+
+INCLUDE memory_regions.lld
+
+/* ------------------------------------------------------------------------- */
+/* User DMA non-cacheable section (RA8T2 D-Cache support).                   */
+/*                                                                           */
+/* Placed BEFORE 'INCLUDE fsp_gen.lld' so this output section appears first  */
+/* in script order. GNU LD assigns each input section to the FIRST matching  */
+/* output section in script order; therefore the explicit per-symbol         */
+/* patterns below claim the listed BSS sections before fsp_gen.lld's         */
+/* __ram_zero$$ '*(.bss*)' wildcard can absorb them.                         */
+/*                                                                           */
+/* (Earlier attempt used 'INSERT AFTER __ram_noinit_nocache$$': INSERT only  */
+/*  controls OUTPUT ordering; INPUT-section matching for inserted sections   */
+/*  runs LAST as orphans, so the greedy '*(.bss*)' wildcard always won.     */
+/*  Symptom: section was emitted but empty.)                                 */
+/*                                                                           */
+/* Because the section is no longer inside the FSP-managed nocache range     */
+/* [__ram_noinit_nocache$$Base .. __ram_zero_nocache$$Limit], the BSP        */
+/* auto-MPU loop in system.c::bsp_init_mpu() does NOT cover it. We install   */
+/* an extra MPU region (Normal, Non-Cacheable, Shareable) for this range in  */
+/* R_BSP_WarmStart(BSP_WARM_START_POST_C); see src/hal_warmstart.c. The same */
+/* warm-start hook also zero-initializes the section (it is NOLOAD).         */
+/*                                                                           */
+/* All other RAM contents (DTC vector, __ram_from_*, BSS, heap, stack, ...) */
+/* are referenced via linker symbols and simply shift up by sizeof(this      */
+/* section); no hard-coded RAM addresses exist in the project.               */
+/* ------------------------------------------------------------------------- */
+SECTIONS
+{
+    .user_dma_nocache (NOLOAD) : ALIGN(32)
+    {
+        __user_dma_nocache_start = .;
+        /* L3-Switch driver control block. Contains members that the L3-Switch
+         * HW dereferences directly:
+         *   - p_descriptor_queue_list[]: the LINKFIX table; its address is
+         *     written into the GWCA queue-base register, and HW walks it to
+         *     find each queue's descriptor array.
+         *   - p_queues_status[], ts_descriptor_queue_status_list[]: HW status
+         *     write-back targets.
+         * The rest of the struct is CPU-only state, which doesn't hurt to
+         * place in nocache (open()-time only, not hot path). */
+        *(.bss.g_layer3_switch0_ctrl)
+        /* RMAC SW buffer node table (driver <-> DMA shared) */
+        *(.bss.g_ether0_buffer_node_list)
+        /* L3-Switch DMA descriptors: TX, RX and TS (timestamp) */
+        *(.bss.g_ether0_ts_descriptor_array0)
+        *(.bss.g_ether0_tx_descriptor_array0)
+        *(.bss.g_ether0_tx_descriptor_array1)
+        *(.bss.g_ether0_rx_descriptor_array0)
+        *(.bss.g_ether0_rx_descriptor_array1)
+        /* Frame buffers (DMA reads on TX, writes on RX): 24 x 1536 bytes */
+        *(.bss.g_ether0_ether_buffer0)
+        *(.bss.g_ether0_ether_buffer1)
+        *(.bss.g_ether0_ether_buffer2)
+        *(.bss.g_ether0_ether_buffer3)
+        *(.bss.g_ether0_ether_buffer4)
+        *(.bss.g_ether0_ether_buffer5)
+        *(.bss.g_ether0_ether_buffer6)
+        *(.bss.g_ether0_ether_buffer7)
+        *(.bss.g_ether0_ether_buffer8)
+        *(.bss.g_ether0_ether_buffer9)
+        *(.bss.g_ether0_ether_buffer10)
+        *(.bss.g_ether0_ether_buffer11)
+        *(.bss.g_ether0_ether_buffer12)
+        *(.bss.g_ether0_ether_buffer13)
+        *(.bss.g_ether0_ether_buffer14)
+        *(.bss.g_ether0_ether_buffer15)
+        *(.bss.g_ether0_ether_buffer16)
+        *(.bss.g_ether0_ether_buffer17)
+        *(.bss.g_ether0_ether_buffer18)
+        *(.bss.g_ether0_ether_buffer19)
+        *(.bss.g_ether0_ether_buffer20)
+        *(.bss.g_ether0_ether_buffer21)
+        *(.bss.g_ether0_ether_buffer22)
+        *(.bss.g_ether0_ether_buffer23)
+        . = ALIGN(32);
+        __user_dma_nocache_end = .;
+    } > RAM
+
+}
+
+INCLUDE fsp_gen.lld
+
+SECTIONS
+{
+    shell_only :
+    {
+        . = ALIGN(4);
+        __fsymtab_start = .;
+        KEEP(*(FSymTab))
+        __fsymtab_end = .;
+        . = ALIGN(4);
+        __vsymtab_start = .;
+        KEEP(*(VSymTab))
+        __vsymtab_end = .;
+        . = ALIGN(4);
+    }> FLASH
+}
